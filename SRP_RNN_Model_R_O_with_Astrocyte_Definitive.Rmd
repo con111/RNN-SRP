@@ -1,0 +1,231 @@
+---
+title: "Untitled"
+author: "Connor"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+#Step 1 Load the Libraries
+```{r}
+# Step 1: Load the libraries
+library(ggplot2)
+library(dplyr)
+```
+
+# Step 2: Load the dataset
+```{r}
+data <- read.csv("C:/Users/conno/OneDrive/Documents/SRP_summer_research/Rice_Cammeo_Osmancik.csv")
+data
+```
+
+# Step 3: Preprocessing
+```{r}
+# Convert categorical target to binary
+data$Class <- ifelse(data$Class == "Cammeo", 1, 0)  # Replace "positive_class" with your positive class
+
+# Select all features except the target
+feature_columns <- setdiff(names(data), "label")  # Assuming 'label' is the name of the target column
+X <- data %>% select(all_of(feature_columns)) %>% as.matrix()
+Y <- as.matrix(data$Class)
+
+# Normalize features
+X <- scale(X)
+```
+
+# Step 4: Parameter Initialization
+```{r}
+set.seed(69)
+train_indices <- sample(1:nrow(X), size = 0.8 * nrow(X))
+X_train <- X[train_indices, ]
+Y_train <- Y[train_indices]
+X_test <- X[-train_indices, ]
+Y_test <- Y[-train_indices, ]
+
+input_size <- ncol(X)  # Number of features
+hidden_size <- 10  # Adjusted to 10 neurons
+output_size <- 1
+learning_rate <- 0.01
+num_epochs <- 1000
+lambda <- 0.01
+
+# Define astrocyte modulation mask
+astrocyte_mask <- c(1, 0, 1, 0, 1, 0, 1, 0, 1, 0)  # Adjusted for 10 neurons
+
+# Define astrocyte modulation function
+astrocyte_modulation <- function(hidden) {
+  modulation_effect <- 0.1  # Define the modulation effect strength
+  hidden * (1 + modulation_effect * astrocyte_mask)
+}
+```
+
+# Step 5: Activation Functions
+```{r}
+sigmoid <- function(x) {
+  return(1 / (1 + exp(-x)))
+}
+
+sigmoid_derivative <- function(x) {
+  return(x * (1 - x))
+}
+```
+
+# Step 6: Initialize Weights and Biases
+```{r}
+W_xh <- matrix(runif(input_size * hidden_size, -0.5, 0.5), nrow = input_size)
+W_hh <- matrix(runif(hidden_size * hidden_size, -0.5, 0.5), nrow = hidden_size)
+W_hy <- matrix(runif(hidden_size * output_size, -0.5, 0.5), nrow = hidden_size)
+b_h <- matrix(0, nrow = 1, ncol = hidden_size)
+b_y <- matrix(0, nrow = 1, ncol = output_size)
+```
+
+# Step 7: Forward Propagation with Astrocytes
+```{r}
+forward <- function(inputs, hidden) {
+  outputs <- list()
+  for (t in 1:nrow(inputs)) {
+    hidden <- sigmoid(inputs[t, , drop = FALSE] %*% W_xh + hidden %*% W_hh + b_h)
+    hidden <- astrocyte_modulation(hidden)  # Apply astrocyte modulation
+    output <- sigmoid(hidden %*% W_hy + b_y)
+    outputs[[t]] <- output
+  }
+  return(list(outputs = outputs, hidden = hidden))
+}
+```
+
+# Step 8: Training Function with Regularization
+```{r}
+train <- function(inputs, targets) {
+  hidden <- matrix(0, nrow = 1, ncol = hidden_size)
+  for (t in 1:nrow(inputs)) {
+    forward_result <- forward(matrix(inputs[t, ], nrow = 1), hidden)
+    output <- forward_result$outputs[[1]]
+    hidden <- forward_result$hidden
+
+    output_error <- output - targets[t]
+    hidden_error <- output_error %*% t(W_hy) * sigmoid_derivative(hidden)
+
+    dW_xh <- t(matrix(inputs[t, ], nrow = 1)) %*% hidden_error
+    dW_hh <- t(hidden) %*% hidden_error
+    dW_hy <- t(hidden) %*% output_error
+    db_h <- hidden_error
+    db_y <- output_error
+
+    # Update weights and biases with regularization
+    W_xh <<- W_xh - learning_rate * (dW_xh + lambda * W_xh)
+    W_hh <<- W_hh - learning_rate * (dW_hh + lambda * W_hh)
+    W_hy <<- W_hy - learning_rate * (dW_hy + lambda * W_hy)
+    b_h <<- b_h - learning_rate * db_h
+    b_y <<- b_y - learning_rate * db_y
+  }
+}
+```
+
+# Step 9: Helper Functions for Evaluation Metrics
+```{r}
+accuracy <- function(predictions, targets) {
+  return(mean((predictions > 0.5) == targets))
+}
+
+precision <- function(predictions, targets) {
+  tp <- sum((predictions > 0.5) & (targets == 1))
+  fp <- sum((predictions > 0.5) & (targets == 0))
+  return(tp / (tp + fp))
+}
+
+recall <- function(predictions, targets) {
+  tp <- sum((predictions > 0.5) & (targets == 1))
+  fn <- sum((predictions <= 0.5) & (targets == 1))
+  return(tp / (tp + fn))
+}
+
+f1_score <- function(precision, recall) {
+  return(2 * precision * recall / (precision + recall))
+}
+```
+
+# Step 10: Training Loop with Early Stopping
+```{r}
+best_loss <- Inf
+patience <- 50
+patience_counter <- 0
+
+for (epoch in 1:num_epochs) {
+  loss <- 0
+  for (i in 1:nrow(X_train)) {
+    inputs <- matrix(X_train[i, ], nrow = 1)
+    targets <- matrix(Y_train[i], nrow = 1)
+
+    train(inputs, targets)
+    forward_result <- forward(inputs, matrix(0, nrow = 1, ncol = hidden_size))
+    output <- forward_result$outputs[[1]]
+    loss <- loss + sum((output - targets) ^ 2)
+  }
+
+  loss <- loss / nrow(X_train)
+
+  if (loss < best_loss) {
+    best_loss <- loss
+    patience_counter <- 0
+  } else {
+    patience_counter <- patience_counter + 1
+  }
+
+  if (patience_counter > patience) {
+    cat("Early stopping at epoch", epoch, "with best loss", best_loss, "\n")
+    break
+  }
+
+  pred_train <- sapply(1:nrow(X_train), function(i) {
+    inputs <- matrix(X_train[i, ], nrow = 1)
+    forward_result <- forward(inputs, matrix(0, nrow = 1, ncol = hidden_size))
+    return(forward_result$outputs[[1]])
+  })
+
+  acc <- accuracy(pred_train, Y_train)
+  prec <- precision(pred_train, Y_train)
+  rec <- recall(pred_train, Y_train)
+  f1 <- f1_score(prec, rec)
+
+  cat("Epoch:", epoch, "Loss:", loss, "Accuracy:", acc, "Precision:", prec, "Recall:", rec, "F1 Score:", f1, "\n")
+}
+```
+
+# Step 11: Test the RNN
+```{r}
+pred_test <- sapply(1:nrow(X_test), function(i) {
+  inputs <- matrix(X_test[i, ], nrow = 1)
+  forward_result <- forward(inputs, matrix(0, nrow = 1, ncol = hidden_size))
+  return(forward_result$outputs[[1]])
+})
+
+acc_test <- accuracy(pred_test, Y_test)
+prec_test <- precision(pred_test, Y_test)
+rec_test <- recall(pred_test, Y_test)
+f1_test <- f1_score(prec_test, rec_test)
+
+cat("Test Accuracy:", acc_test, "Test Precision:", prec_test, "Test Recall:", rec_test, "Test F1 Score:", f1_test, "\n")
+```

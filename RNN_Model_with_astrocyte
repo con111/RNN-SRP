@@ -1,0 +1,202 @@
+```{r}
+#step 0 install packages
+install.packages("ggplot2")
+install.packages("dplyr")
+
+#step 1 load the libraries
+# Load required packages
+library(ggplot2)
+library(dplyr)
+
+#step 2 load the data
+data <- read.csv("C://Users//conno//OneDrive//Documents//SRP_summer_research//planar_flower.csv")
+data #just to make sure the right dataset is loaded
+
+#step 3 preprocess the data
+X <- data %>% select(x1, x2) %>% as.matrix()
+Y <- data$y
+
+# Visualize the data
+df <- data.frame(x = X[,1], y = X[,2], label = as.factor(Y))
+ggplot(df, aes(x=x, y=y, color=label)) + geom_point() + theme_minimal()
+# Normalize features
+X <- scale(X)
+# Convert labels to binary format
+Y <- as.matrix(Y)
+
+#Step 4 RNN implementation
+# Set random seed for reproducibility
+set.seed(69)
+# Split the data into training and testing sets using base R
+train_indices <- sample(1:nrow(X), size = 0.8 * nrow(X))
+X_train <- X[train_indices, ]
+Y_train <- Y[train_indices]
+X_test <- X[-train_indices, ]
+Y_test <- Y[-train_indices, ]
+
+# Initalize RNN parameters
+input_size <- 2  # number of ndes in the input layer (in this case the nodes represent x_1 and x_2 )
+hidden_size <- 4  # number of nodes in the hidden layer
+output_size <- 1  # number of neurons in the output
+learning_rate <- 0.01
+num_epochs <- 1000
+
+#Step 5 Helper functions
+sigmoid <- function(x) {
+  return(1 / (1 + exp(-x)))
+}
+
+sigmoid_derivative <- function(x) {
+  return(x * (1 - x))
+}
+
+#Step 6 Setting the weights and biases
+# Initialize weights and biases
+W_xh <- matrix(runif(input_size * hidden_size, -0.5, 0.5), nrow = input_size)
+W_hh <- matrix(runif(hidden_size * hidden_size, -0.5, 0.5), nrow = hidden_size)
+W_hy <- matrix(runif(hidden_size * output_size, -0.5, 0.5), nrow = hidden_size)
+b_h <- matrix(0, nrow = 1, ncol = hidden_size)
+b_y <- matrix(0, nrow = 1, ncol = output_size)
+
+#Step 7 Initalizing Astrocyte parameters
+#Initialize astrocyte parameters
+astrocyte_state <- matrix(0, nrow = 1, ncol = hidden_size)
+astrocyte_weights <- matrix(runif(hidden_size * hidden_size, -0.5, 0.5), nrow = hidden_size)
+astrocyte_bias <- matrix(0, nrow = 1, ncol = hidden_size)
+astrocyte_modulation_strength <- 0.5
+
+#Step 8 Define astrocyte modulation function
+# Define astrocyte modulation function
+astrocyte_modulation <- function(hidden) {
+  return(sigmoid(hidden %*% astrocyte_weights + astrocyte_bias) * astrocyte_modulation_strength)
+}
+
+#Step 9 Forward Propgation
+forward <- function(inputs, hidden) {
+  outputs <- list()
+  for (t in 1:nrow(inputs)) {
+    hidden <- sigmoid(inputs[t, ] %*% W_xh + hidden %*% W_hh + b_h)
+    astrocyte_effect <- astrocyte_modulation(hidden)
+    hidden <- hidden + astrocyte_effect  # Modulate hidden state with astrocyte effect
+    output <- sigmoid(hidden %*% W_hy + b_y)
+    outputs[[t]] <- output
+  }
+  return(list(outputs = outputs, hidden = hidden))
+}
+
+#Step 10 Training function with astrocyte modulation
+train <- function(inputs, targets) {
+  hidden <- matrix(0, nrow = 1, ncol = hidden_size)
+  forward_result <- forward(inputs, hidden)
+  outputs <- forward_result$outputs
+  hidden <- forward_result$hidden
+  
+  dW_xh <- matrix(0, nrow = input_size, ncol = hidden_size)
+  dW_hh <- matrix(0, nrow = hidden_size, ncol = hidden_size)
+  dW_hy <- matrix(0, nrow = hidden_size, ncol = output_size)
+  db_h <- matrix(0, nrow = 1, ncol = hidden_size)
+  db_y <- matrix(0, nrow = 1, ncol = output_size)
+  dAstrocyte_weights <- matrix(0, nrow = hidden_size, ncol = hidden_size)
+  dAstrocyte_bias <- matrix(0, nrow = 1, ncol = hidden_size)
+  
+  for (t in nrow(inputs):1) {
+    output_error <- outputs[[t]] - targets[t]
+    hidden_error <- output_error %*% t(W_hy) * sigmoid_derivative(hidden)
+    
+    dW_hy <- dW_hy + t(hidden) %*% output_error
+    db_y <- db_y + output_error
+    
+    input_t <- matrix(inputs[t, ], nrow = 1, ncol = input_size)
+    hidden_t <- matrix(hidden, nrow = 1, ncol = hidden_size)
+    
+    dW_xh <- dW_xh + t(input_t) %*% hidden_error
+    db_h <- db_h + hidden_error
+    dW_hh <- dW_hh + t(hidden_t) %*% hidden_error
+    
+    # Calculate astrocyte effect error
+    astrocyte_effect <- astrocyte_modulation(hidden)
+    astrocyte_error <- hidden_error * astrocyte_modulation_strength
+    
+    dAstrocyte_weights <- dAstrocyte_weights + t(hidden) %*% astrocyte_error
+    dAstrocyte_bias <- dAstrocyte_bias + astrocyte_error
+  }
+  
+  # Update weights and biases
+  W_xh <<- W_xh - learning_rate * dW_xh
+  W_hh <<- W_hh - learning_rate * dW_hh
+  W_hy <<- W_hy - learning_rate * dW_hy
+  b_h <<- b_h - learning_rate * db_h
+  b_y <<- b_y - learning_rate * db_y
+  astrocyte_weights <<- astrocyte_weights - learning_rate * dAstrocyte_weights
+  astrocyte_bias <<- astrocyte_bias - learning_rate * dAstrocyte_bias
+}
+
+#Step 11 Helper functions for additional metrics
+accuracy <- function(pred, actual) {
+  pred_class <- ifelse(pred > 0.5, 1, 0)
+  return(mean(pred_class == actual))
+}
+
+precision <- function(pred, actual) {
+  pred_class <- ifelse(pred > 0.5, 1, 0)
+  true_positives <- sum(pred_class == 1 & actual == 1)
+  predicted_positives <- sum(pred_class == 1)
+  return(true_positives / predicted_positives)
+}
+
+recall <- function(pred, actual) {
+  pred_class <- ifelse(pred > 0.5, 1, 0)
+  true_positives <- sum(pred_class == 1 & actual == 1)
+  actual_positives <- sum(actual == 1)
+  return(true_positives / actual_positives)
+}
+
+f1_score <- function(precision, recall) {
+  return(2 * (precision * recall) / (precision + recall))
+}
+
+#Step 12 Train the RNN with astrocyte modulation
+for (epoch in 1:num_epochs) {
+  loss <- 0
+  for (i in 1:nrow(X_train)) {
+    inputs <- matrix(X_train[i, ], nrow = 1)
+    targets <- matrix(Y_train[i], nrow = 1)
+    train(inputs, targets)
+    forward_result <- forward(inputs, matrix(0, nrow = 1, ncol = hidden_size))
+    outputs <- forward_result$outputs
+    loss <- loss + sum((outputs[[1]] - targets)^2)
+  }
+  loss <- loss / nrow(X_train)
+  
+  if (epoch %% 100 == 0) {
+    pred_train <- sapply(1:nrow(X_train), function(i) {
+      inputs <- matrix(X_train[i, ], nrow = 1)
+      forward_result <- forward(inputs, matrix(0, nrow = 1, ncol = hidden_size))
+      return(forward_result$outputs[[1]])
+    })
+    
+    acc <- accuracy(pred_train, Y_train)
+    prec <- precision(pred_train, Y_train)
+    rec <- recall(pred_train, Y_train)
+    f1 <- f1_score(prec, rec)
+    
+    cat("Epoch:", epoch, "Loss:", loss, "Accuracy:", acc, "Precision:", prec, "Recall:", rec, "F1 Score:", f1, "\n")
+  }
+}
+
+#Step 13 Evaluate on test data
+# Generate predictions for the test dataset
+test_predictions <- sapply(1:nrow(X_test), function(i) {
+  forward(matrix(X_test[i, ], nrow = 1, ncol = input_size), matrix(0, nrow = 1, ncol = hidden_size))$outputs[[1]]
+})
+
+# Calculate test metrics
+test_loss <- mean((test_predictions - Y_test)^2)
+test_acc <- accuracy(test_predictions, Y_test)
+test_prec <- precision(test_predictions, Y_test)
+test_rec <- recall(test_predictions, Y_test)
+test_f1 <- f1_score(test_prec, test_rec)
+
+# Print test metrics
+cat("Test Loss:", test_loss, "Test Accuracy:", test_acc, "Test Precision:", test_prec, "Test Recall:", test_rec, "Test F1 Score:", test_f1, "\n")
+```

@@ -1,61 +1,19 @@
----
-title: ''
-author: "Connor"
-date: "`r Sys.Date()`"
-output: html_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
-#step 0 install packages
 ```{r}
+#Step 1 install packages
 #install necessary packages
 install.packages("ggplot2")
 install.packages("dplyr")
-#install.packages("readr")
-#install.packages("caret")
-```
 
-#step 1 load the libraries
-```{r}
+#Step 2 load the libraries
 # Load required packages
 library(ggplot2)
 library(dplyr)
-#library(readr)
-#library(caret)
-```
 
-#Step 2 Load the dataset
-```{r}
-# Step 2: Load Data
+#Step 3 Load the dataset
 data <- read.csv("C:/Users/conno/OneDrive/Documents/SRP_summer_research/planar_flower.csv")
 data
-```
 
-#Step 3 Preprocessing
-```{r}
+#Step 4 Preprocessing
 X <- data %>% select(x1, x2) %>% as.matrix()
 Y <- as.matrix(data$y)
 
@@ -65,10 +23,8 @@ ggplot(df, aes(x=x, y=y, color=label)) + geom_point() + theme_minimal()
 
 # Normalize features
 X <- scale(X)
-```
 
-#Step 4 Parameter Initalization
-```{r}
+# Step 5 Parameter Initalization
 # Split data into training and testing sets
 set.seed(69)
 train_indices <- sample(1:nrow(X), size = 0.8 * nrow(X))
@@ -77,18 +33,14 @@ Y_train <- Y[train_indices]
 X_test <- X[-train_indices, ]
 Y_test <- Y[-train_indices, ]
 
-# Hyperparameters
-input_size <- 2
-hidden_size <- 4
-output_size <- 1
+# Initalize RNN parameters
+input_size <- 2  # number of ndes in the input layer (in this case the nodes represent x_1 and x_2 )
+hidden_size <- 4  # number of nodes in the hidden layer
+output_size <- 1  # number of neurons in the output
 learning_rate <- 0.01
 num_epochs <- 1000
-lambda <- 0.01
-```
 
-#Step 5 Activation Functions
-```{r}
-# Step 5: Helper Functions
+# Step 6 Activation Functions
 sigmoid <- function(x) {
   return(1 / (1 + exp(-x)))
 }
@@ -96,19 +48,15 @@ sigmoid <- function(x) {
 sigmoid_derivative <- function(x) {
   return(x * (1 - x))
 }
-```
 
-#Step 6 Initialize Weights and Biases
-```{r}
+# Step 7 Initialize Weights and Biases
 W_xh <- matrix(runif(input_size * hidden_size, -0.5, 0.5), nrow = input_size)
 W_hh <- matrix(runif(hidden_size * hidden_size, -0.5, 0.5), nrow = hidden_size)
 W_hy <- matrix(runif(hidden_size * output_size, -0.5, 0.5), nrow = hidden_size)
 b_h <- matrix(0, nrow = 1, ncol = hidden_size)
 b_y <- matrix(0, nrow = 1, ncol = output_size)
-```
 
-#Step 7 Forward Propgation
-```{r}
+#Step 8 Forward Propgation
 forward <- function(inputs, hidden) {
   outputs <- list()
   for (t in 1:nrow(inputs)) {
@@ -118,10 +66,8 @@ forward <- function(inputs, hidden) {
   }
   return(list(outputs = outputs, hidden = hidden))
 }
-```
 
-# Step 8: Training Function with Regularization
-```{r}
+# Step 9: Training Function with Regularization
 train <- function(inputs, targets) {
   hidden <- matrix(0, nrow = 1, ncol = hidden_size)
   for (t in 1:nrow(inputs)) {
@@ -147,10 +93,7 @@ train <- function(inputs, targets) {
   }
 }
 
-```
-
-# Step 9: Helper Functions for Evaluation Metrics
-```{r}
+# Step 10: Helper Functions for Evaluation Metrics
 accuracy <- function(predictions, targets) {
   return(mean((predictions > 0.5) == targets))
 }
@@ -170,10 +113,8 @@ recall <- function(predictions, targets) {
 f1_score <- function(precision, recall) {
   return(2 * precision * recall / (precision + recall))
 }
-```
 
-# Step 10: Training Loop with Early Stopping
-```{r}
+# Step 11: Training Loop with Early Stopping
 best_loss <- Inf
 patience <- 50
 patience_counter <- 0
@@ -217,11 +158,8 @@ for (epoch in 1:num_epochs) {
   
   cat("Epoch:", epoch, "Loss:", loss, "Accuracy:", acc, "Precision:", prec, "Recall:", rec, "F1 Score:", f1, "\n")
 }
-```
 
-#Step 11 Test RNN
-```{r}
-# Step 11: Test the RNN
+#Step 12 Test RNN
 pred_test <- sapply(1:nrow(X_test), function(i) {
   inputs <- matrix(X_test[i, ], nrow = 1)
   forward_result <- forward(inputs, matrix(0, nrow = 1, ncol = hidden_size))
